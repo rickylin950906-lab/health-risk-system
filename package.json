@@ -1,0 +1,13 @@
+{
+  "name": "health-risk-system",
+  "version": "1.0.0",
+  "description": "智慧健康日誌與風險評估系統",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "sqlite3": "^5.1.7"
+  }
+}

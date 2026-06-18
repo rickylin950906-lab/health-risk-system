@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>智慧健康風險評估系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-4 md:p-8 font-sans text-gray-800">
+    <div class="max-w-5xl mx-auto space-y-6">
+        
+        <div class="bg-indigo-50 p-4 rounded-xl shadow-sm border border-indigo-100">
+            <h2 class="text-lg font-bold text-indigo-800 mb-2">🔍 快速測試風險 (不存入資料庫)</h2>
+            <div class="flex gap-2 items-center">
+                <input type="number" id="testSleep" placeholder="睡眠(hr)" class="w-24 p-2 rounded border">
+                <input type="number" id="testSteps" placeholder="步數" class="w-24 p-2 rounded border">
+                <input type="number" id="testMood" placeholder="心情(1-10)" class="w-24 p-2 rounded border">
+                <button onclick="testRisk()" class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded font-bold transition">計算風險</button>
+                <span id="testResult" class="ml-4 font-bold text-indigo-700"></span>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+            <h1 id="formTitle" class="text-2xl font-bold text-gray-800 mb-6">📝 新增今日健康日誌</h1>
+            <form id="healthForm" class="grid grid-cols-1 md:grid-cols-4 gap-5 items-end">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">紀錄日期</label>
+                    <input type="date" id="logDate" required class="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">睡眠時數 (小時)</label>
+                    <input type="number" step="0.1" id="sleepHours" required class="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">當日總步數</label>
+                    <input type="number" id="steps" required class="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-1">心情分數 (1~10)</label>
+                    <input type="number" min="1" max="10" id="moodScore" required class="w-full border rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="md:col-span-4 mt-2 flex gap-2">
+                    <button type="submit" id="submitBtn" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-sm">
+                        送出數據並執行決策樹評估
+                    </button>
+                    <button type="button" id="cancelEditBtn" onclick="cancelEdit()" class="hidden bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 px-4 rounded-lg shadow-sm">
+                        取消修改
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl shadow-md border border-gray-200">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">📊 歷史健康數據與風險追蹤</h2>
+            <div class="overflow-x-auto rounded-lg border border-gray-200">
+                <table class="w-full text-left text-sm whitespace-nowrap">
+                    <thead class="bg-gray-50 text-gray-600 uppercase font-semibold border-b border-gray-200">
+                        <tr>
+                            <th class="p-4">日期</th>
+                            <th class="p-4">睡眠(hr)</th>
+                            <th class="p-4">步數</th>
+                            <th class="p-4">心情</th>
+                            <th class="p-4">風險等級</th>
+                            <th class="p-4 text-center">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logsTableBody" class="divide-y divide-gray-200"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let editingId = null;
+        document.getElementById('logDate').valueAsDate = new Date();
+
+        async function fetchLogs() {
+            const response = await fetch('/api/health-logs');
+            const data = await response.json();
+            const tbody = document.getElementById('logsTableBody');
+            tbody.innerHTML = '';
+
+            data.forEach(log => {
+                let badgeClass = "bg-gray-100 text-gray-800";
+                if(log.risk_level === "低風險") badgeClass = "bg-green-100 text-green-700";
+                if(log.risk_level === "中風險") badgeClass = "bg-yellow-100 text-yellow-700";
+                if(log.risk_level === "高風險") badgeClass = "bg-red-100 text-red-700";
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-4 font-medium">${log.log_date}</td>
+                    <td class="p-4">${log.sleep_hours} 小時</td>
+                    <td class="p-4">${log.steps} 步</td>
+                    <td class="p-4">${log.mood_score} 分</td>
+                    <td class="p-4"><span class="px-3 py-1 rounded-full text-xs font-bold border ${badgeClass}">${log.risk_level}</span></td>
+                    <td class="p-4 text-center">
+                        <button onclick="startEdit(${log.id}, '${log.log_date}', ${log.sleep_hours}, ${log.steps}, ${log.mood_score})" class="text-blue-500 font-semibold mr-3">編輯</button>
+                        <button onclick="deleteLog(${log.id})" class="text-red-500 font-semibold">刪除</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        document.getElementById('healthForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const payload = {
+                logDate: document.getElementById('logDate').value,
+                sleepHours: parseFloat(document.getElementById('sleepHours').value),
+                steps: parseInt(document.getElementById('steps').value),
+                moodScore: parseInt(document.getElementById('moodScore').value)
+            };
+
+            try {
+                if (editingId) {
+                    const res = await fetch(`/api/health-logs/${editingId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if(res.ok) {
+                        alert("✅ 更新成功！");
+                        cancelEdit();
+                        fetchLogs();
+                    } else alert("更新失敗");
+                } else {
+                    const res = await fetch('/api/health-logs', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if(res.ok) {
+                        alert("✅ 新增成功！");
+                        fetchLogs();
+                    } else alert("新增失敗");
+                }
+            } catch (err) {
+                alert("伺服器無回應，請確認終端機是否正常執行。");
+            }
+        });
+
+        function startEdit(id, date, sleep, steps, mood) {
+            editingId = id;
+            document.getElementById('logDate').value = date;
+            document.getElementById('sleepHours').value = sleep;
+            document.getElementById('steps').value = steps;
+            document.getElementById('moodScore').value = mood;
+            
+            document.getElementById('formTitle').innerText = "✏️ 修改健康日誌";
+            document.getElementById('submitBtn').innerText = "更新紀錄並重新評估";
+            document.getElementById('submitBtn').classList.replace('bg-blue-600', 'bg-orange-500');
+            document.getElementById('cancelEditBtn').classList.remove('hidden');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function cancelEdit() {
+            editingId = null;
+            document.getElementById('healthForm').reset();
+            document.getElementById('logDate').valueAsDate = new Date();
+            document.getElementById('formTitle').innerText = "📝 新增今日健康日誌";
+            document.getElementById('submitBtn').innerText = "送出數據並執行決策樹評估";
+            document.getElementById('submitBtn').classList.replace('bg-orange-500', 'bg-blue-600');
+            document.getElementById('cancelEditBtn').classList.add('hidden');
+        }
+
+        async function deleteLog(id) {
+            if(confirm('確定要刪除這筆紀錄嗎？')) {
+                await fetch(`/api/health-logs/${id}`, { method: 'DELETE' });
+                fetchLogs();
+            }
+        }
+
+        async function testRisk() {
+            const sleep = document.getElementById('testSleep').value || 0;
+            const steps = document.getElementById('testSteps').value || 0;
+            const mood = document.getElementById('testMood').value || 0;
+            const res = await fetch(`/api/health-logs/risk?sleep=${sleep}&steps=${steps}&mood=${mood}`);
+            const data = await res.json();
+            document.getElementById('testResult').innerText = `👉 決策樹計算結果：${data.riskLevel}`;
+        }
+
+        fetchLogs();
+    </script>
+</body>
+</html>
